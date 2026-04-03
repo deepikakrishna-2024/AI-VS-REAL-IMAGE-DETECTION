@@ -69,16 +69,20 @@ class_indices = None
 
 
 class CNNClassifier(nn.Module):
-    """CNN model for binary classification - Fast version (matches train.py)"""
+    """CNN model using ResNet50 - matches train.py architecture"""
     def __init__(self):
         super(CNNClassifier, self).__init__()
-        self.backbone = models.resnet18(weights=None)
+        # Use ResNet50 (matches train.py)
+        self.backbone = models.resnet50(weights=None)
         
-        # Simple classifier head (matches train.py)
+        # Replace classifier with custom head (matches train.py)
         num_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(num_features, 256),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(num_features, 1),
+            nn.Linear(256, 1),
             nn.Sigmoid()
         )
     
