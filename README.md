@@ -197,7 +197,5 @@ pip install torch torchvision fastapi uvicorn pillow scikit-learn
 ## Author
 
 **Deepika K**  
-Panimalar Engineering College (2nd Year)
-Electronics and Communication Engineering (ECE)  
-
+Panimalar Engineering College (2nd Year), Electronics and Communication Engineering (ECE)
 
