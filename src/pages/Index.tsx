@@ -8,7 +8,9 @@ type PredictionResult = {
   confidence: number;
 };
 
-const API_URL = "http://localhost:8000";
+const API_URL = typeof window !== 'undefined' 
+  ? `http://${window.location.hostname}:8000`
+  : "http://localhost:8000";
 
 const checkApiHealth = async (): Promise<boolean> => {
   try {

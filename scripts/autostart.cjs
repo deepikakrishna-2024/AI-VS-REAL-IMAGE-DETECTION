@@ -81,13 +81,12 @@ async function checkAndInstallRequirements() {
 }
 
 async function checkAndTrainModel() {
-  log('Checking ML model...', 'blue');
-  
+  // Check if model files exist
   const modelExists = fs.existsSync(MODEL_FILE);
   const classIndicesExist = fs.existsSync(CLASS_INDICES_FILE);
   
   if (modelExists && classIndicesExist) {
-    log('ML model already trained ✓', 'green');
+    log('Model files found ✓', 'green');
     return;
   }
   
@@ -98,13 +97,34 @@ async function checkAndTrainModel() {
     log('Class indices not found: class_indices.pkl', 'yellow');
   }
   
-  log('Training ML model (this may take 10-30 minutes)...', 'yellow');
+  log('Starting model training...', 'yellow');
+  console.log(); // Empty line before training output
+  
   try {
-    await runCommand(
-      'python train.py',
-      ML_MODEL_DIR,
-      'Training ML model'
-    );
+    // Run training with inherited stdio to show formatted output
+    const isWindows = process.platform === 'win32';
+    const pythonCmd = isWindows ? 'python' : 'python3';
+    
+    await new Promise((resolve, reject) => {
+      const trainProcess = spawn(pythonCmd, ['train.py'], {
+        cwd: ML_MODEL_DIR,
+        stdio: 'inherit' // This shows the output directly
+      });
+      
+      trainProcess.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Training exited with code ${code}`));
+        }
+      });
+      
+      trainProcess.on('error', (err) => {
+        reject(err);
+      });
+    });
+    
+    console.log(); // Empty line after training
     log('Model training complete ✓', 'green');
   } catch (error) {
     log('Model training failed', 'red');

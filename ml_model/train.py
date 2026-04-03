@@ -17,15 +17,31 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torchvision.models as models
 
+def print_header():
+    """Print formatted header"""
+    print("\n" + "="*60)
+    print("  AI IMAGE FORENSICS - MODEL TRAINING")
+    print("="*60)
+    print(f"   Device: {device}")
+    print()
+
+def print_step(step_num, total_steps, message):
+    """Print step header"""
+    print(f"[Step {step_num}/{total_steps}] {message}")
+
+def print_stat(label, value, indent=3):
+    """Print formatted stat"""
+    print(" "*indent + f"{label}: {value}")
+
 # Configuration
 IMG_SIZE = 224
-BATCH_SIZE = 64  # Increased for faster training
-EPOCHS = 3       # Reduced for quick training
-LEARNING_RATE = 0.001  # Higher learning rate for faster convergence
+BATCH_SIZE = 13       # Reduced to get ~300 batches per epoch
+EPOCHS = 5          # Increased for better accuracy
+LEARNING_RATE = 0.0001  # Lower for better convergence
 DATASET_PATH = "../datasets/train"
 MODEL_SAVE_PATH = "ai_real_classifier.pth"
 CLASS_INDICES_PATH = "class_indices.pkl"
-QUICK_MODE = True  # Use subset of data for fast training
+QUICK_MODE = False    # Use full dataset for better accuracy
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -54,21 +70,23 @@ class ImageDataset(Dataset):
 
 
 class CNNClassifier(nn.Module):
-    """CNN model for binary classification - Fast version"""
+    """CNN model using full ResNet50 with all layers trainable"""
     def __init__(self):
         super(CNNClassifier, self).__init__()
-        # Use pretrained ResNet18 as feature extractor
-        self.backbone = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        # Use pretrained ResNet50 (more powerful than ResNet18)
+        self.backbone = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
         
-        # Freeze ALL layers except classifier for fast training
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+        # UNFREEZE all layers for full training (better accuracy)
+        # All parameters will be trainable by default
         
-        # Replace classifier with simple head
+        # Replace classifier with custom head
         num_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(num_features, 256),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(num_features, 1),
+            nn.Linear(256, 1),
             nn.Sigmoid()
         )
     
@@ -119,16 +137,20 @@ def load_dataset(dataset_path, max_images_per_class=500):
 
 
 def get_transforms(is_training=True):
-    """Get image transforms for training/validation"""
+    """Get image transforms for training/validation with enhanced augmentation"""
     if is_training:
         return transforms.Compose([
-            transforms.Resize((IMG_SIZE, IMG_SIZE)),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(20),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.RandomResizedCrop(IMG_SIZE, scale=(0.8, 1.0)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomVerticalFlip(p=0.1),
+            transforms.RandomRotation(30),
+            transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
+            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                               std=[0.229, 0.224, 0.225])
+                               std=[0.229, 0.224, 0.225]),
+            transforms.RandomErasing(p=0.3, scale=(0.02, 0.1))
         ])
     else:
         return transforms.Compose([
@@ -140,13 +162,11 @@ def get_transforms(is_training=True):
 
 
 def train_model():
-    """Train the model"""
-    print("=" * 60)
-    print("AI vs Real Image Detection - PyTorch Model Training")
-    print("=" * 60)
+    """Train the model with formatted output"""
+    print_header()
     
-    # Load dataset
-    print("\nLoading dataset...")
+    # Step 1: Load dataset
+    print_step(1, 5, "Loading dataset...")
     image_paths, labels, class_names = load_dataset(DATASET_PATH)
     
     # Split into train/validation
@@ -154,8 +174,11 @@ def train_model():
         image_paths, labels, test_size=0.2, random_state=42, stratify=labels
     )
     
-    print(f"Training samples: {len(train_paths)}")
-    print(f"Validation samples: {len(val_paths)}")
+    print_stat("Training samples", len(train_paths))
+    print_stat("Validation samples", len(val_paths))
+    class_mapping = ", ".join([f"{name}={idx}" for name, idx in {name: idx for idx, name in enumerate(class_names)}.items()])
+    print_stat("Class mapping", class_mapping)
+    print()
     
     # Create datasets
     train_dataset = ImageDataset(train_paths, train_labels, transform=get_transforms(True))
@@ -165,18 +188,33 @@ def train_model():
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
     
-    # Create model
-    print("\nCreating model...")
+    # Step 2: Build model
+    print_step(2, 5, "Building ResNet50 model...")
     model = CNNClassifier().to(device)
+    
+    # Count parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print_stat("Total parameters", f"{total_params:,}")
+    print_stat("Trainable parameters", f"{trainable_params:,}")
+    
+    # Class weights
+    weight_real = len(train_labels) / (2 * sum(1 for l in train_labels if l == 0))
+    weight_fake = len(train_labels) / (2 * sum(1 for l in train_labels if l == 1))
+    print_stat("Class weights", f"REAL={weight_real:.2f}, FAKE={weight_fake:.2f}")
+    print()
     
     # Loss and optimizer
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.2)
     
-    # Training loop
-    print("\nTraining (Quick Mode - 3 epochs, frozen backbone)...")
-    print("This should take 2-5 minutes depending on your CPU...")
+    # Step 3: Training
+    print_step(3, 5, f"Training for up to {EPOCHS} epochs...")
+    batches_per_epoch = len(train_loader)
+    print_stat("Batches per epoch", batches_per_epoch)
+    print("-" * 60)
+    
     best_val_acc = 0.0
     
     for epoch in range(EPOCHS):
@@ -186,7 +224,7 @@ def train_model():
         train_correct = 0
         train_total = 0
         
-        for images, labels_batch in train_loader:
+        for batch_idx, (images, labels_batch) in enumerate(train_loader):
             images = images.to(device)
             labels_batch = labels_batch.float().to(device)
             
@@ -204,6 +242,14 @@ def train_model():
             predicted = (outputs > 0.5).float()
             train_total += labels_batch.size(0)
             train_correct += (predicted == labels_batch).sum().item()
+            
+            # Print batch progress (single line update)
+            if batch_idx % 5 == 0 or batch_idx == batches_per_epoch - 1:
+                progress = (batch_idx / batches_per_epoch) * 100
+                batch_acc = 100 * train_correct / train_total if train_total > 0 else 0
+                print(f"\r   Epoch {epoch+1}/{EPOCHS} - Batch {batch_idx}/{batches_per_epoch} ({progress:.1f}%) - Loss: {loss.item():.4f} - Acc: {batch_acc:.1f}%", end='', flush=True)
+        
+        print()  # New line after epoch completes
         
         train_acc = 100 * train_correct / train_total
         
@@ -231,11 +277,7 @@ def train_model():
         # Learning rate scheduling
         scheduler.step(val_loss)
         
-        print(f"Epoch [{epoch+1}/{EPOCHS}] "
-              f"Train Loss: {train_loss/len(train_loader):.4f} "
-              f"Train Acc: {train_acc:.2f}% "
-              f"Val Loss: {val_loss/len(val_loader):.4f} "
-              f"Val Acc: {val_acc:.2f}%")
+        print(f"   Epoch {epoch+1}/{EPOCHS} Summary - Train Acc: {train_acc:.2f}% - Val Acc: {val_acc:.2f}%")
         
         # Save best model
         if val_acc > best_val_acc:
@@ -245,7 +287,7 @@ def train_model():
                 'class_names': class_names,
                 'img_size': IMG_SIZE
             }, MODEL_SAVE_PATH)
-            print(f"  -> Saved best model (Val Acc: {val_acc:.2f}%)")
+            print(f"   -> Saved best model (Val Acc: {val_acc:.2f}%)")
     
     print(f"\nTraining complete! Best validation accuracy: {best_val_acc:.2f}%")
     return model
