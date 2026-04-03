@@ -35,8 +35,8 @@ def print_stat(label, value, indent=3):
 
 # Configuration
 IMG_SIZE = 224
-BATCH_SIZE = 13       # Reduced to get ~300 batches per epoch
-EPOCHS = 5          # Increased for better accuracy
+BATCH_SIZE = 40      # Increased to get <100 batches per epoch
+EPOCHS = 20          # Increased for better accuracy
 LEARNING_RATE = 0.0001  # Lower for better convergence
 DATASET_PATH = "../datasets/train"
 MODEL_SAVE_PATH = "ai_real_classifier.pth"
