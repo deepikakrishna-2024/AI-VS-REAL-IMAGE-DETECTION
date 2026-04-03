@@ -23,7 +23,9 @@ This application helps users **identify AI-generated images** versus **authentic
 ## Features
 
 - **Upload Images**: Support for JPG and PNG files (max 5MB)
-- **AI Detection**: Uses a trained ResNet-18 CNN model to classify images
+- **AI Detection**: Uses a trained ResNet-50 CNN model with data augmentation to classify images
+- **Enhanced Training**: Formatted console output with real-time progress tracking
+- **Custom Dataset Support**: Add your own images to improve model accuracy
 - **Fast Inference**: Optimized for quick predictions
 - **Modern UI**: Clean, responsive interface with drag-and-drop upload
 - **Real-time Feedback**: Shows confidence scores and analysis results
@@ -43,9 +45,11 @@ This application helps users **identify AI-generated images** versus **authentic
 - Uvicorn (ASGI server)
 
 ### ML Model
-- ResNet-18 CNN architecture
-- Trained on AI-generated vs real image dataset
-- Binary classification (Real vs AI Generated)
+- **ResNet-50 CNN architecture** (23M trainable parameters)
+- **Full fine-tuning** - all layers trainable for better accuracy
+- **Enhanced data augmentation** - rotation, flipping, color jitter, blur, random erasing
+- **Formatted training output** with single-line progress updates
+- **Binary classification** (Real vs AI Generated)
 
 ## Project Structure
 
@@ -53,6 +57,10 @@ This application helps users **identify AI-generated images** versus **authentic
 ├── api/                  # FastAPI backend
 │   ├── main.py          # API endpoints
 │   └── requirements.txt # Python dependencies
+├── datasets/            # Training dataset folder
+│   └── train/
+│       ├── REAL/       # Real human face images
+│       └── FAKE/       # AI-generated images
 ├── ml_model/            # ML training and model files
 │   ├── train.py         # Model training script
 │   ├── ai_real_classifier.pth  # Trained model weights
@@ -138,21 +146,48 @@ npm run dev
 
 Navigate to: http://localhost:8080
 
-## Model Training (Optional)
+## Model Training
 
-If you need to retrain the model:
-
-1. Prepare your dataset in `datasets/` folder:
-   - `datasets/REAL/` - Real images
-   - `datasets/FAKE/` - AI-generated images
-
-2. Run training:
+### Quick Start
 ```bash
 cd ml_model
 python train.py
 ```
 
-Training takes 10-30 minutes depending on your hardware.
+Training output format:
+```
+[Step 3/5] Training for up to 5 epochs...
+   Batches per epoch: 300
+------------------------------------------------------------
+   Epoch 1/5 - Batch 299/300 (99.0%) - Loss: 0.4521 - Acc: 78.5%
+   Epoch 1/5 Summary - Train Acc: 82.50% - Val Acc: 85.20%
+   -> Saved best model (Val Acc: 85.20%)
+```
+
+### Improving Accuracy
+
+To improve detection accuracy for your specific images:
+
+1. **Add your images to training data:**
+   - Copy AI-generated images to `datasets/train/FAKE/`
+   - Copy real photos to `datasets/train/REAL/`
+
+2. **Recommended datasets from Kaggle:**
+   - [140k Real and Fake Faces](https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces) - Best for training
+   - [Human Faces](https://www.kaggle.com/datasets/ashwingupta3012/human-faces) - Additional real faces
+   - [SFHQ Dataset](https://www.kaggle.com/datasets/selfishgene/sfhq-dataset) - High-quality AI faces
+
+3. **Retrain the model:**
+   ```bash
+   cd ml_model
+   python train.py
+   ```
+
+### Training Configuration
+- **Epochs**: 5 (can increase to 10-20 for better accuracy)
+- **Batch size**: 13 (~300 batches per epoch)
+- **Training time**: 30-60 minutes on CPU
+- **Model automatically saves** when validation accuracy improves
 
 ## API Endpoints
 
